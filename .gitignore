@@ -1,0 +1,13 @@
+target/
+.env*
+!.env.example
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+.idea
+*.iml
+.vscode/
+
+# Archivo de variables sin punto (contiene secretos)
+env
+.github/copilot-instructions.md
