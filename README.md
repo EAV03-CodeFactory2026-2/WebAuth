@@ -42,11 +42,16 @@ src/main/java/com/udea/webauth/
 │   └── SwaggerConfig.java           # Configuración OpenAPI con soporte Bearer JWT
 │
 ├── controllers/
-│   ├── AuthController.java          # POST /api/v1/auth/login · GET /api/v1/auth/validate
+│   ├── AuthController.java          # POST /login · POST /cambiar-rol · GET /validate
 │   └── DTOs/
-│       ├── LoginRequest.java        # { email, password }
-│       ├── AuthResponse.java        # { token, tipo, idUsuario, email, roles }
-│       └── ValidateTokenResponse.java # { valid, idUsuario, email, roles }
+│       ├── LoginRequest.java        # { correo, contrasena, rol? }
+│       ├── CambiarRolRequest.java   # { rol }
+│       ├── AuthResponse.java        # { token, mensaje, rolActivo, roles }
+│       └── ValidateTokenResponse.java # { valid, userId, email, roles, rolActivo }
+│
+├── exceptions/
+│   ├── RolNoAsignadoException.java        # 403: el rol pedido no está asignado
+│   └── SeleccionRolRequeridaException.java # 400: varios roles y no se eligió uno
 │
 ├── entities/
 │   ├── UsuarioAuth.java             # Entidad ligera: id, email, passwordHash, activo
@@ -62,7 +67,7 @@ src/main/java/com/udea/webauth/
 │   └── SecurityConfig.java          # SecurityFilterChain STATELESS · rutas públicas/privadas
 │
 └── services/
-    ├── IAuthService.java            # Contrato: login, validateToken
+    ├── IAuthService.java            # Contrato: login, cambiarRol, validateToken
     └── AuthService.java             # BCrypt verify → JwtService.generateToken
 ```
 
@@ -71,7 +76,8 @@ src/main/java/com/udea/webauth/
 | Método | Ruta                    | Seguridad        | Descripción                                                  |
 |--------|-------------------------|------------------|--------------------------------------------------------------|
 | `GET`  | `/api/v1/health`        | Público          | Health check de la API                                       |
-| `POST` | `/api/v1/auth/login`    | Público          | Autentica usuario y retorna JWT con claims de identidad y roles |
+| `POST` | `/api/v1/auth/login`    | Público          | Autentica usuario y retorna JWT con claims de identidad, roles y rol activo |
+| `POST` | `/api/v1/auth/cambiar-rol` | Bearer JWT    | Emite un JWT nuevo con otro rol activo del usuario           |
 | `GET`  | `/api/v1/auth/validate` | Bearer JWT       | Valida el estado del token y retorna los claims decodificados |
 | `GET`  | `/swagger-ui.html`      | Público          | Documentación interactiva Swagger UI                         |
 | `GET`  | `/v3/api-docs`          | Público          | Especificación OpenAPI v3 en JSON                            |
@@ -84,26 +90,43 @@ POST /api/v1/auth/login
 Content-Type: application/json
 
 {
-  "email": "propietario@udea.edu.co",
-  "password": "secreto123"
+  "correo": "ana.gomez@correo.com",
+  "contrasena": "secreto123",
+  "rol": "Propietario"
 }
 ```
+
+`rol` es opcional: si la cuenta tiene un solo rol, ese queda como rol activo. Si tiene varios, es obligatorio indicar con cuál opera.
 
 **Response 200 OK**
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiJ9...",
-  "tipo": "Bearer",
-  "idUsuario": 42,
-  "email": "propietario@udea.edu.co",
-  "roles": ["PROPIETARIO"]
+  "mensaje": "Autenticación exitosa",
+  "rolActivo": "Propietario",
+  "roles": ["Propietario", "Proveedor"]
 }
 ```
 
-**Response 401 Unauthorized**
-```json
-{ "error": "Credenciales inválidas o usuario inactivo." }
+| Código | Cuándo | Cuerpo |
+|--------|--------|--------|
+| `400` | La cuenta tiene varios roles y no envió `rol` | `{ "error": "La cuenta tiene varios roles. Indica con cuál deseas operar.", "rolesDisponibles": ["Propietario", "Proveedor"] }` |
+| `401` | Credenciales inválidas o usuario inactivo | `{ "error": "Credenciales inválidas." }` |
+| `403` | El `rol` pedido no está asignado al usuario | `{ "error": "El usuario no tiene asignado el rol solicitado." }` |
+
+### Ejemplo — Cambiar rol activo
+
+Emite un token nuevo con otro rol activo, sin volver a pedir la contraseña. Los roles se releen de la base de datos.
+
+```http
+POST /api/v1/auth/cambiar-rol
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+
+{ "rol": "Proveedor" }
 ```
+
+Responde `200` con la misma forma que el login (`mensaje: "Rol activo actualizado"`), `401` si el token es inválido o el usuario está inactivo, y `403` si el rol no está asignado.
 
 ### Ejemplo — Validate Token
 
@@ -117,9 +140,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 ```json
 {
   "valid": true,
-  "idUsuario": 42,
-  "email": "propietario@udea.edu.co",
-  "roles": ["PROPIETARIO"]
+  "userId": 42,
+  "email": "ana.gomez@correo.com",
+  "roles": ["Propietario", "Proveedor"],
+  "rolActivo": "Propietario"
 }
 ```
 
@@ -183,11 +207,14 @@ docker run -p 8081:8081 --env-file .env webauth
 |---------|--------------------------------------------|
 | `sub`   | ID del usuario (entero como String)        |
 | `email` | Correo electrónico del usuario             |
-| `roles` | Lista de roles (ej. `["PROPIETARIO"]`)     |
+| `roles` | Lista de roles asignados (ej. `["Propietario", "Proveedor"]`) |
+| `rolActivo` | Rol con el que opera la sesión (ej. `"Propietario"`). Siempre es uno de `roles` |
 | `iat`   | Fecha de emisión (Unix timestamp)          |
 | `exp`   | Fecha de expiración (`iat + JWT_EXPIRATION_MS`) |
 
 Algoritmo de firma: **HS256**. La clave se carga desde `JWT_SECRET` (Base64-encoded, mínimo 256 bits).
+
+> **Rol activo**: los demás servicios (por ejemplo Business) solo conceden el `rolActivo` del token. Así, una cuenta Propietario + Proveedor que inició sesión como Proveedor no puede hacer acciones de Propietario hasta cambiar de rol con `/api/v1/auth/cambiar-rol`.
 
 ## Convenciones de código
 

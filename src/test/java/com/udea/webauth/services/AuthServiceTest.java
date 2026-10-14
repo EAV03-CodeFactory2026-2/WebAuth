@@ -63,7 +63,7 @@ class AuthServiceTest {
 
         when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("password123", "$2a$10$hashedpassword")).thenReturn(true);
-        when(jwtService.generateToken(eq(1), eq("admin@udea.edu.co"), anyList())).thenReturn("mocked.jwt.token");
+        when(jwtService.generateToken(eq(1), eq("admin@udea.edu.co"), anyList(), eq("Propietario"))).thenReturn("mocked.jwt.token");
 
         AuthResponse response = authService.login(request);
 
