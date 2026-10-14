@@ -7,3 +7,6 @@ target/
 .idea
 *.iml
 .vscode/
+
+# Archivo de variables sin punto (contiene secretos)
+env
