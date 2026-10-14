@@ -19,4 +19,7 @@ public class LoginRequest {
 
     @NotBlank(message = "La contraseña no puede estar vacía.")
     private String contrasena;
+
+    // Opcional. Rol con el que se quiere operar; obligatorio solo si la cuenta tiene varios roles.
+    private String rol;
 }
