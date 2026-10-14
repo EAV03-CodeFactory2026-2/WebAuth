@@ -16,4 +16,5 @@ public class ValidateTokenResponse {
     private Integer userId;
     private String email;
     private List<String> roles;
+    private String rolActivo;
 }
