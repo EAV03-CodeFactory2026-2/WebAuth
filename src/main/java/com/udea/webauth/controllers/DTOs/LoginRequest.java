@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Data
 @Builder
@@ -17,6 +18,7 @@ public class LoginRequest {
     @Email(message = "El formato del correo es inválido.")
     private String correo;
 
+    @ToString.Exclude
     @NotBlank(message = "La contraseña no puede estar vacía.")
     private String contrasena;
 

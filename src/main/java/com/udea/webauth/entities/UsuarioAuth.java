@@ -1,5 +1,6 @@
 package com.udea.webauth.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -13,7 +14,7 @@ import java.util.Set;
 @AllArgsConstructor
 @Builder
 @EqualsAndHashCode(exclude = "roles")
-@ToString(exclude = "roles")
+@ToString(exclude = {"roles", "contrasena"})
 public class UsuarioAuth {
 
     @Id
@@ -30,6 +31,7 @@ public class UsuarioAuth {
     @Column(nullable = false, unique = true, length = 150)
     private String correo;
 
+    @JsonIgnore
     @Column(nullable = false, length = 255)
     private String contrasena;
 

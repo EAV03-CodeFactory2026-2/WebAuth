@@ -63,7 +63,8 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").value("mocked.jwt.token"))
-                .andExpect(jsonPath("$.mensaje").value("Autenticación exitosa"));
+                .andExpect(jsonPath("$.mensaje").value("Autenticación exitosa"))
+                .andExpect(jsonPath("$.contrasena").doesNotExist());
     }
 
     @Test
@@ -111,6 +112,29 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
                 .andExpect(jsonPath("$.userId").value(1))
-                .andExpect(jsonPath("$.email").value("admin@udea.edu.co"));
+                .andExpect(jsonPath("$.email").value("admin@udea.edu.co"))
+                .andExpect(jsonPath("$.contrasena").doesNotExist());
+    }
+
+    @Test
+    void usuarioAuthYLoginRequestNoExponenContrasenaEnJsonNiToString() throws Exception {
+        com.udea.webauth.entities.UsuarioAuth usuario = com.udea.webauth.entities.UsuarioAuth.builder()
+                .idUsuario(1)
+                .nombre("Admin")
+                .apellido("UdeA")
+                .correo("admin@udea.edu.co")
+                .contrasena("SecretoSuperSeguro123!")
+                .build();
+
+        LoginRequest loginRequest = LoginRequest.builder()
+                .correo("admin@udea.edu.co")
+                .contrasena("SecretoSuperSeguro123!")
+                .build();
+
+        String json = objectMapper.writeValueAsString(usuario);
+        org.junit.jupiter.api.Assertions.assertFalse(json.contains("contrasena"));
+        org.junit.jupiter.api.Assertions.assertFalse(json.contains("SecretoSuperSeguro123!"));
+        org.junit.jupiter.api.Assertions.assertFalse(usuario.toString().contains("SecretoSuperSeguro123!"));
+        org.junit.jupiter.api.Assertions.assertFalse(loginRequest.toString().contains("SecretoSuperSeguro123!"));
     }
 }
