@@ -1,10 +1,20 @@
-name: SonarQube
+name: Análisis con SonarQube
 on:
   push:
     branches:
       - main
   pull_request:
     types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_KEY: EAV03-CodeFactory2026-2_WebAuth
+  MIN_COVERAGE: 65
+  MAX_DEBT_MIN: 960
+  MAX_COMPLEXITY: 50
+
 jobs:
   build:
     name: Build and analyze
@@ -35,3 +45,113 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=EAV03-CodeFactory2026-2_WebAuth -Dsonar.coverage.exclusions=**/config/**,**/entities/**,**/*Application.java
+
+      - name: Upload JaCoCo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-jacoco-webauth
+          path: target/site/jacoco/
+          if-no-files-found: warn
+
+      - name: Wait for SonarCloud processing
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          URL=$(grep ceTaskUrl target/sonar/report-task.txt | cut -d= -f2-)
+          for i in $(seq 1 30); do
+            S=$(curl -s -u "$SONAR_TOKEN:" "$URL" | jq -r '.task.status')
+            echo "Estado de SonarCloud: $S"
+            case "$S" in
+              SUCCESS) exit 0 ;;
+              FAILED|CANCELED) echo "::warning::El análisis de SonarCloud terminó con el estado $S"; exit 0 ;;
+            esac
+            sleep 5
+          done
+          echo "::warning::Se agotó el tiempo de espera para el procesamiento de SonarCloud."
+          exit 0
+
+      - name: Confirm that SonarCloud analysis finished correctly
+        id: sonar-status
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          TASK_FILE=target/sonar/report-task.txt
+          if [ ! -f "$TASK_FILE" ]; then
+            echo "::warning::No se encontró el informe del análisis de SonarCloud; se omitirá la validación de métricas."
+            exit 0
+          fi
+
+          URL=$(sed -n 's/^ceTaskUrl=//p' "$TASK_FILE")
+          if [ -z "$URL" ]; then
+            echo "::warning::No se encontró la URL del proceso de análisis de SonarCloud; se omitirá la validación de métricas."
+            exit 0
+          fi
+
+          if ! TASK_JSON=$(curl -fsS -u "$SONAR_TOKEN:" "$URL"); then
+            echo "::warning::No se pudo consultar el estado del análisis de SonarCloud; se omitirá la validación de métricas."
+            exit 0
+          fi
+
+          STATUS=$(jq -r '.task.status // empty' <<< "$TASK_JSON")
+          if [ "$STATUS" = "SUCCESS" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::El estado del análisis de SonarCloud es ${STATUS:-desconocido}; se omitirá la validación de métricas."
+          fi
+
+      - name: Report quality criteria
+        if: github.event_name == 'push' && github.ref_name == 'main' && steps.sonar-status.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          API=https://sonarcloud.io/api
+
+          RESP=$(curl -s -u "$SONAR_TOKEN:" \
+            "$API/measures/component?component=$PROJECT_KEY&branch=$BRANCH&metricKeys=coverage,sqale_index,complexity")
+          if ! echo "$RESP" | jq -e '.component' >/dev/null 2>&1; then
+            echo "::warning::Error de SonarCloud: $RESP"
+            exit 0
+          fi
+
+          M=$(echo "$RESP" | jq -r '.component.measures[] | "\(.metric)=\(.value)"')
+          get() { echo "$M" | grep "^$1=" | cut -d= -f2; }
+
+          COV=$(get coverage)
+          DEBT=$(get sqale_index)
+          CX=$(get complexity)
+
+          RESP_V=$(curl -s -u "$SONAR_TOKEN:" \
+            "$API/issues/search?componentKeys=$PROJECT_KEY&branch=$BRANCH&types=VULNERABILITY&severities=CRITICAL,BLOCKER&resolved=false&ps=1")
+          VULN=$(echo "$RESP_V" | jq -r '.total // "N/A"')
+
+          ok()  { echo "✅"; }
+          bad() { echo "❌"; }
+
+          COV_S=$(awk "BEGIN{exit !(${COV:-0} >= $MIN_COVERAGE)}" && ok || bad)
+          DEBT_S=$([ -n "$DEBT" ] && [ "$DEBT" -le "$MAX_DEBT_MIN" ] && ok || bad)
+          CX_S=$([ -n "$CX" ] && [ "$CX" -lt "$MAX_COMPLEXITY" ] && ok || bad)
+          VULN_S=$([ "$VULN" = "0" ] && ok || bad)
+
+          {
+            echo "### Resultados de calidad"
+            echo "| Criterio | Valor | Objetivo | Estado |"
+            echo "|---|---|---|---|"
+            echo "| Cobertura | ${COV:-N/A}% | ≥ ${MIN_COVERAGE}% | $COV_S |"
+            echo "| Deuda técnica | ${DEBT:-N/A} min | ≤ ${MAX_DEBT_MIN} min | $DEBT_S |"
+            echo "| Complejidad ciclomática | ${CX:-N/A} | < ${MAX_COMPLEXITY} | $CX_S |"
+            echo "| Vulnerabilidades críticas o bloqueantes | $VULN | 0 | $VULN_S |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if echo "$COV_S$DEBT_S$CX_S$VULN_S" | grep -q "❌"; then
+            echo "::warning title=Criterios de calidad::No se cumplen uno o más criterios. Consulta la tabla en el resumen del flujo de trabajo."
+          fi
+
+          exit 0
