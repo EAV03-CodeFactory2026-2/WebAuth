@@ -15,7 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 @Component
 @RequiredArgsConstructor
@@ -30,9 +30,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        final String authHeader = request.getHeader("Authorization");
+        final String authHeader = Objects.requireNonNullElse(request.getHeader("Authorization"), "");
 
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (!authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -47,7 +47,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     List<String> roles = jwtService.extractRoles(jwt);
                     var authorities = roles.stream()
                             .map(r -> new SimpleGrantedAuthority("ROLE_" + r.toUpperCase()))
-                            .collect(Collectors.toList());
+                            .toList();
 
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userId,

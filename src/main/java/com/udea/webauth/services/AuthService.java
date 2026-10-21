@@ -3,6 +3,7 @@ package com.udea.webauth.services;
 import com.udea.webauth.controllers.DTOs.AuthResponse;
 import com.udea.webauth.controllers.DTOs.LoginRequest;
 import com.udea.webauth.controllers.DTOs.ValidateTokenResponse;
+import com.udea.webauth.entities.RolAuth;
 import com.udea.webauth.entities.UsuarioAuth;
 import com.udea.webauth.exceptions.RolNoAsignadoException;
 import com.udea.webauth.exceptions.SeleccionRolRequeridaException;
@@ -11,9 +12,11 @@ import com.udea.webauth.security.IJwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -30,68 +33,65 @@ public class AuthService implements IAuthService {
 
     @Override
     public AuthResponse login(LoginRequest request) {
-        UsuarioAuth usuario = usuarioRepository.findByCorreo(request.getCorreo())
-                .orElseThrow(() -> new IllegalArgumentException("Credenciales inválidas."));
-
-        boolean match;
-        if (usuario.getContrasena() != null && usuario.getContrasena().startsWith("$2a$")) {
-            match = passwordEncoder.matches(request.getContrasena(), usuario.getContrasena());
-        } else {
-            match = request.getContrasena().equals(usuario.getContrasena());
-        }
+        UsuarioAuth usuario = usuarioRepository.findByCorreo(request.getCorreo()).orElse(new UsuarioAuth());
+        String guardada = Objects.requireNonNullElse(usuario.getContrasena(), "");
+        boolean match = guardada.startsWith("$2a$")
+                ? passwordEncoder.matches(request.getContrasena(), guardada)
+                : guardada.equals(request.getContrasena());
 
         if (!match) {
             throw new IllegalArgumentException("Credenciales inválidas.");
         }
-
-        validarActivo(usuario);
 
         return emitirToken(usuario, request.getRol(), "Autenticación exitosa");
     }
 
     @Override
     public AuthResponse cambiarRol(String token, String rol) {
-        token = quitarPrefijoBearer(token);
-        if (token == null || !jwtService.isTokenValid(token)) {
+        // Los roles se releen de la BD: si al usuario le quitaron un rol, no puede volver a activarlo.
+        UsuarioAuth usuario = extraerTokenValido(token)
+                .map(jwtService::extractUserId)
+                .map(Integer::valueOf)
+                .flatMap(usuarioRepository::findById)
+                .orElse(null);
+
+        if (usuario == null) {
             throw new IllegalArgumentException(MSG_TOKEN_INVALIDO);
         }
-
-        // Los roles se releen de la BD: si al usuario le quitaron un rol, no puede volver a activarlo.
-        Integer usuarioId = Integer.parseInt(jwtService.extractUserId(token));
-        UsuarioAuth usuario = usuarioRepository.findById(usuarioId)
-                .orElseThrow(() -> new IllegalArgumentException(MSG_TOKEN_INVALIDO));
-        validarActivo(usuario);
 
         return emitirToken(usuario, rol, "Rol activo actualizado");
     }
 
     @Override
     public ValidateTokenResponse validateToken(String token) {
-        token = quitarPrefijoBearer(token);
+        String jwt = extraerTokenValido(token).orElse(null);
 
-        if (token == null || !jwtService.isTokenValid(token)) {
+        if (jwt == null) {
             return ValidateTokenResponse.builder().valid(false).build();
         }
 
-        String userIdStr = jwtService.extractUserId(token);
-        String email = jwtService.extractEmail(token);
-        List<String> roles = jwtService.extractRoles(token);
-        String rolActivo = jwtService.extractRolActivo(token);
+        Integer userId = Optional.ofNullable(jwtService.extractUserId(jwt))
+                .map(Integer::valueOf)
+                .orElse(null);
 
         return ValidateTokenResponse.builder()
                 .valid(true)
-                .userId(userIdStr != null ? Integer.parseInt(userIdStr) : null)
-                .email(email)
-                .roles(roles)
-                .rolActivo(rolActivo)
+                .userId(userId)
+                .email(jwtService.extractEmail(jwt))
+                .roles(jwtService.extractRoles(jwt))
+                .rolActivo(jwtService.extractRolActivo(jwt))
                 .build();
     }
 
     private AuthResponse emitirToken(UsuarioAuth usuario, String rolSolicitado, String mensaje) {
+        if (!"Activo".equalsIgnoreCase(usuario.getEstado())) {
+            throw new IllegalArgumentException("El usuario se encuentra inactivo.");
+        }
+
         List<String> roles = usuario.getRoles().stream()
-                .map(r -> r.getNombreRol())
+                .map(RolAuth::getNombreRol)
                 .sorted()
-                .collect(Collectors.toList());
+                .toList();
 
         String rolActivo = resolverRolActivo(roles, rolSolicitado);
         String jwtToken = jwtService.generateToken(usuario.getIdUsuario(), usuario.getCorreo(), roles, rolActivo);
@@ -113,9 +113,9 @@ public class AuthService implements IAuthService {
             throw new RolNoAsignadoException(MSG_SIN_ROLES);
         }
 
-        if (rolSolicitado != null && !rolSolicitado.isBlank()) {
+        if (StringUtils.hasText(rolSolicitado)) {
             return roles.stream()
-                    .filter(r -> r.equalsIgnoreCase(rolSolicitado.trim()))
+                    .filter(rolSolicitado.trim()::equalsIgnoreCase)
                     .findFirst()
                     .orElseThrow(() -> new RolNoAsignadoException(MSG_ROL_NO_ASIGNADO));
         }
@@ -126,16 +126,8 @@ public class AuthService implements IAuthService {
         throw new SeleccionRolRequeridaException(MSG_SELECCION_ROL, roles);
     }
 
-    private void validarActivo(UsuarioAuth usuario) {
-        if (!"Activo".equalsIgnoreCase(usuario.getEstado())) {
-            throw new IllegalArgumentException("El usuario se encuentra inactivo.");
-        }
-    }
-
-    private String quitarPrefijoBearer(String token) {
-        if (token != null && token.startsWith("Bearer ")) {
-            return token.substring(7);
-        }
-        return token;
+    private Optional<String> extraerTokenValido(String token) {
+        return Optional.ofNullable(StringUtils.delete(token, "Bearer "))
+                .filter(jwtService::isTokenValid);
     }
 }
