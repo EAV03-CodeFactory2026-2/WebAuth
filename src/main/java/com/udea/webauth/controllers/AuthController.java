@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -90,7 +91,7 @@ public class AuthController {
     })
     @GetMapping("/validate")
     public ResponseEntity<ValidateTokenResponse> validateToken(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        if (authHeader == null || authHeader.isBlank()) {
+        if (!StringUtils.hasText(authHeader)) {
             return ResponseEntity.ok(ValidateTokenResponse.builder().valid(false).build());
         }
         ValidateTokenResponse response = authService.validateToken(authHeader);
