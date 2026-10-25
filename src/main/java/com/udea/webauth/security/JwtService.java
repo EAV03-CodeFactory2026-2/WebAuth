@@ -66,7 +66,8 @@ public class JwtService implements IJwtService {
     @Override
     public boolean isTokenValid(String token) {
         try {
-            return extractAllClaims(token).getExpiration().after(new Date());
+            extractAllClaims(token);
+            return true;
         } catch (JwtException | IllegalArgumentException e) {
             log.debug("Token JWT inválido: {}", e.getMessage());
             return false;
