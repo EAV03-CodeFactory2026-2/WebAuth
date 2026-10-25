@@ -122,38 +122,26 @@ class AuthServiceTest {
     void loginFallaCuandoUsuarioNoExiste() {
         LoginRequest request = loginRequest("password123", null);
         when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.empty());
+        when(passwordEncoder.matches("password123", "")).thenReturn(false);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> authService.login(request));
 
         assertEquals("Credenciales inválidas.", ex.getMessage());
-        verify(passwordEncoder, never()).matches(any(), any());
+        verify(passwordEncoder).matches("password123", "");
         verify(jwtService, never()).generateToken(any(), any(), any(), any());
     }
 
     @Test
-    void loginExitosoConContrasenaEnTextoPlanoQueCoincide() {
+    void loginRechazaContrasenaEnTextoPlano() {
         usuario.setContrasena("password123");
         LoginRequest request = loginRequest("password123", null);
         when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
-        when(jwtService.generateToken(1, "admin@udea.edu.co", List.of("Propietario"), "Propietario")).thenReturn("plain.jwt.token");
-
-        AuthResponse response = authService.login(request);
-
-        assertEquals("plain.jwt.token", response.getToken());
-        assertEquals("Propietario", response.getRolActivo());
-        verify(passwordEncoder, never()).matches(any(), any());
-    }
-
-    @Test
-    void loginFallaConContrasenaEnTextoPlanoQueNoCoincide() {
-        usuario.setContrasena("password123");
-        LoginRequest request = loginRequest("wrongpassword", null);
-        when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("password123", "password123")).thenReturn(false);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> authService.login(request));
 
         assertEquals("Credenciales inválidas.", ex.getMessage());
-        verify(passwordEncoder, never()).matches(any(), any());
+        verify(passwordEncoder).matches("password123", "password123");
         verify(jwtService, never()).generateToken(any(), any(), any(), any());
     }
 
@@ -162,11 +150,12 @@ class AuthServiceTest {
         usuario.setContrasena(null);
         LoginRequest request = loginRequest("password123", null);
         when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("password123", "")).thenReturn(false);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> authService.login(request));
 
         assertEquals("Credenciales inválidas.", ex.getMessage());
-        verify(passwordEncoder, never()).matches(any(), any());
+        verify(passwordEncoder).matches("password123", "");
         verify(jwtService, never()).generateToken(any(), any(), any(), any());
     }
 

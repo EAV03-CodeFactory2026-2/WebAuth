@@ -35,11 +35,8 @@ public class AuthService implements IAuthService {
     public AuthResponse login(LoginRequest request) {
         UsuarioAuth usuario = usuarioRepository.findByCorreo(request.getCorreo()).orElse(new UsuarioAuth());
         String guardada = Objects.requireNonNullElse(usuario.getContrasena(), "");
-        boolean match = guardada.startsWith("$2a$")
-                ? passwordEncoder.matches(request.getContrasena(), guardada)
-                : guardada.equals(request.getContrasena());
 
-        if (!match) {
+        if (!passwordEncoder.matches(request.getContrasena(), guardada)) {
             throw new IllegalArgumentException("Credenciales inválidas.");
         }
 
