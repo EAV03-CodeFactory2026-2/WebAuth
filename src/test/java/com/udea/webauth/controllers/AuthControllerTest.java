@@ -241,17 +241,16 @@ class AuthControllerTest {
     }
 
     @Test
-    void loginPropagaExcepcionNoControladaDelServicio() throws Exception {
+    void loginRetorna500ConFormatoUniformeCuandoOcurreExcepcionNoControlada() throws Exception {
         IllegalStateException causa = new IllegalStateException("Fallo inesperado");
         when(authService.login(any(LoginRequest.class))).thenThrow(causa);
         String payload = loginJson(null);
 
-        ServletException ex = assertThrows(ServletException.class, () -> mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(payload)));
-
-        IllegalStateException propagada = assertInstanceOf(IllegalStateException.class, ex.getCause());
-        assertEquals("Fallo inesperado", propagada.getMessage());
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error").value("Error interno del servidor."));
     }
 
     @Test

@@ -41,13 +41,8 @@ public class AuthController {
             @ApiResponse(responseCode = "403", description = "El usuario no tiene asignado el rol solicitado.")
     })
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
-        try {
-            AuthResponse response = authService.login(request);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return error(e);
-        }
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
     }
 
     @Operation(
@@ -61,16 +56,13 @@ public class AuthController {
             @ApiResponse(responseCode = "403", description = "El usuario no tiene asignado el rol solicitado.")
     })
     @PostMapping("/cambiar-rol")
-    public ResponseEntity<?> cambiarRol(@RequestHeader(value = "Authorization", required = false) String authHeader,
+    public ResponseEntity<AuthResponse> cambiarRol(@RequestHeader(value = "Authorization", required = false) String authHeader,
                                         @Valid @RequestBody CambiarRolRequest request) {
-        try {
-            return ResponseEntity.ok(authService.cambiarRol(authHeader, request.getRol()));
-        } catch (RuntimeException e) {
-            return error(e);
-        }
+        return ResponseEntity.ok(authService.cambiarRol(authHeader, request.getRol()));
     }
 
-    private ResponseEntity<Map<String, Object>> error(RuntimeException e) {
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, Object>> error(RuntimeException e) {
         return switch (e) {
             case SeleccionRolRequeridaException s -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", s.getMessage(), "rolesDisponibles", s.getRolesDisponibles()));
@@ -78,7 +70,8 @@ public class AuthController {
                     .body(Map.of("error", r.getMessage()));
             case IllegalArgumentException i -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", i.getMessage()));
-            default -> throw e;
+            default -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Error interno del servidor."));
         };
     }
 
