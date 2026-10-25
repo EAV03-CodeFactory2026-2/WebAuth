@@ -123,7 +123,9 @@ public class AuthService implements IAuthService {
     }
 
     private Optional<String> extraerTokenValido(String token) {
-        return Optional.ofNullable(StringUtils.delete(token, "Bearer "))
+        return Optional.ofNullable(token)
+                .filter(t -> t.startsWith("Bearer "))
+                .map(t -> t.substring(7))
                 .filter(jwtService::isTokenValid);
     }
 }

@@ -314,14 +314,11 @@ class AuthServiceTest {
     }
 
     @Test
-    void cambiarRolAceptaTokenSinPrefijoBearer() {
-        stubTokenValidoDeUsuario();
-        when(jwtService.generateToken(1, "admin@udea.edu.co", List.of("Propietario"), "Propietario")).thenReturn("nuevo.jwt.token");
+    void cambiarRolLanzaExcepcionCuandoTokenNoTienePrefijoBearer() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> authService.cambiarRol("valid.jwt", "Propietario"));
 
-        AuthResponse response = authService.cambiarRol("valid.jwt", "Propietario");
-
-        assertEquals("nuevo.jwt.token", response.getToken());
-        assertEquals("Propietario", response.getRolActivo());
+        assertEquals(AuthService.MSG_TOKEN_INVALIDO, ex.getMessage());
+        verifyNoInteractions(jwtService, usuarioRepository);
     }
 
     @Test
@@ -378,20 +375,12 @@ class AuthServiceTest {
     }
 
     @Test
-    void validateTokenAceptaTokenSinPrefijoBearer() {
-        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
-        when(jwtService.extractUserId("valid.jwt")).thenReturn("1");
-        when(jwtService.extractEmail("valid.jwt")).thenReturn("admin@udea.edu.co");
-        when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of("Propietario"));
-        when(jwtService.extractRolActivo("valid.jwt")).thenReturn("Propietario");
-
+    void validateTokenRetornaInvalidoCuandoTokenNoTienePrefijoBearer() {
         ValidateTokenResponse response = authService.validateToken("valid.jwt");
 
-        assertTrue(response.isValid());
-        assertEquals(1, response.getUserId());
-        assertEquals("admin@udea.edu.co", response.getEmail());
-        assertEquals(List.of("Propietario"), response.getRoles());
-        assertEquals("Propietario", response.getRolActivo());
+        assertFalse(response.isValid());
+        assertNull(response.getUserId());
+        verifyNoInteractions(jwtService);
     }
 
     private LoginRequest loginRequest(String contrasena, String rol) {
