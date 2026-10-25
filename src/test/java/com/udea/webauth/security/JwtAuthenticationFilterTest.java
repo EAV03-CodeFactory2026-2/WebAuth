@@ -156,7 +156,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void doFilterNoAutenticaCuandoRolesSonNulos() throws Exception {
+    void doFilterAutenticaSinAuthoritiesCuandoRolesSonNulos() throws Exception {
         request.addHeader("Authorization", "Bearer valid.jwt");
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
         when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
@@ -164,7 +164,11 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request, response, filterChain);
 
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication);
+        assertTrue(authentication.isAuthenticated());
+        assertEquals("7", authentication.getPrincipal());
+        assertTrue(authentication.getAuthorities().isEmpty());
         verify(filterChain, times(1)).doFilter(request, response);
     }
 
@@ -197,10 +201,10 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void doFilterContinuaCadenaSinAutenticarCuandoExtraccionLanzaExcepcion() throws Exception {
+    void doFilterContinuaCadenaSinAutenticarCuandoExtraccionLanzaJwtException() throws Exception {
         request.addHeader("Authorization", "Bearer valid.jwt");
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
-        when(jwtService.extractUserId("valid.jwt")).thenThrow(new RuntimeException("claims corruptos"));
+        when(jwtService.extractUserId("valid.jwt")).thenThrow(new io.jsonwebtoken.JwtException("claims corruptos"));
 
         filter.doFilter(request, response, filterChain);
 

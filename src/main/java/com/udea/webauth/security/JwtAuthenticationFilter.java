@@ -1,10 +1,12 @@
 package com.udea.webauth.security;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -18,6 +20,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -45,7 +48,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String userId = jwtService.extractUserId(jwt);
 
                 if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    List<String> roles = jwtService.extractRoles(jwt);
+                    List<String> roles = Objects.requireNonNullElse(jwtService.extractRoles(jwt), List.of());
                     String rolActivo = jwtService.extractRolActivo(jwt);
                     // Con un rol activo en el token, el usuario solo opera con ese rol (si realmente lo tiene).
                     // Sin el claim se conservan todos los roles, como hasta ahora.
@@ -68,8 +71,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } catch (Exception ignored) {
-            // Si el token es inválido, no se establece autenticación
+        } catch (JwtException | IllegalArgumentException e) {
+            log.debug("No se pudo autenticar el token JWT: {}", e.getMessage());
         }
 
         filterChain.doFilter(request, response);
