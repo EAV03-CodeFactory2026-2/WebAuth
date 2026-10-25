@@ -48,6 +48,7 @@ public class AuthService implements IAuthService {
         // Los roles se releen de la BD: si al usuario le quitaron un rol, no puede volver a activarlo.
         UsuarioAuth usuario = extraerTokenValido(token)
                 .map(jwtService::extractUserId)
+                .filter(id -> id.matches("\\d+"))
                 .map(Integer::valueOf)
                 .flatMap(usuarioRepository::findById)
                 .orElse(null);
@@ -61,7 +62,9 @@ public class AuthService implements IAuthService {
 
     @Override
     public ValidateTokenResponse validateToken(String token) {
-        String jwt = extraerTokenValido(token).orElse(null);
+        String jwt = extraerTokenValido(token)
+                .filter(t -> Objects.requireNonNullElse(jwtService.extractUserId(t), "0").matches("\\d+"))
+                .orElse(null);
 
         if (jwt == null) {
             return ValidateTokenResponse.builder().valid(false).build();

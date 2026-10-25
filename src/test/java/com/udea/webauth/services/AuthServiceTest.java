@@ -256,6 +256,17 @@ class AuthServiceTest {
     }
 
     @Test
+    void cambiarRolLanzaExcepcionCuandoTokenNoTieneSubjectNumerico() {
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("no-numerico");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> authService.cambiarRol("Bearer valid.jwt", "Propietario"));
+
+        assertEquals(AuthService.MSG_TOKEN_INVALIDO, ex.getMessage());
+        verifyNoInteractions(usuarioRepository);
+    }
+
+    @Test
     void cambiarRolLanzaExcepcionCuandoUsuarioNoExiste() {
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
         when(jwtService.extractUserId("valid.jwt")).thenReturn("99");
@@ -333,6 +344,20 @@ class AuthServiceTest {
         assertFalse(response.isValid());
         assertNull(response.getUserId());
         verify(jwtService, never()).extractUserId(any());
+        verify(jwtService, never()).extractEmail(any());
+        verify(jwtService, never()).extractRoles(any());
+        verify(jwtService, never()).extractRolActivo(any());
+    }
+
+    @Test
+    void validateTokenRetornaInvalidoCuandoSubjectNoEsNumerico() {
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("no-numerico");
+
+        ValidateTokenResponse response = authService.validateToken("Bearer valid.jwt");
+
+        assertFalse(response.isValid());
+        assertNull(response.getUserId());
         verify(jwtService, never()).extractEmail(any());
         verify(jwtService, never()).extractRoles(any());
         verify(jwtService, never()).extractRolActivo(any());
