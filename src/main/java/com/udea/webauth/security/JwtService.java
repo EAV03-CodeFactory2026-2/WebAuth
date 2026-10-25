@@ -7,6 +7,7 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.SecretKey;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -15,12 +16,12 @@ import java.util.Objects;
 @Service
 public class JwtService implements IJwtService {
 
-    private final String secret;
+    private final SecretKey signingKey;
     private final long expirationMs;
 
     public JwtService(@Value("${app.jwt.secret}") String secret,
                       @Value("${app.jwt.expiration-ms}") long expirationMs) {
-        this.secret = secret;
+        this.signingKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
         this.expirationMs = expirationMs;
     }
 
@@ -34,7 +35,7 @@ public class JwtService implements IJwtService {
                 .claim("rolActivo", rolActivo)
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + expirationMs))
-                .signWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret)))
+                .signWith(signingKey)
                 .compact();
     }
 
@@ -70,7 +71,7 @@ public class JwtService implements IJwtService {
 
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret)))
+                .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

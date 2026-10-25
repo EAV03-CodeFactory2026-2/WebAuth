@@ -150,9 +150,7 @@ class JwtServiceTest {
     }
 
     @Test
-    void generateTokenLanzaWeakKeyExceptionCuandoSecretoTieneMenosDe256Bits() {
-        JwtService servicioDebil = new JwtService(SECRETO_DEBIL, EXPIRACION_MS);
-
-        assertThrows(WeakKeyException.class, () -> servicioDebil.generateToken(USUARIO_ID, CORREO, ROLES, ROL_ACTIVO));
+    void constructorLanzaWeakKeyExceptionCuandoSecretoTieneMenosDe256Bits() {
+        assertThrows(WeakKeyException.class, () -> new JwtService(SECRETO_DEBIL, EXPIRACION_MS));
     }
 }
