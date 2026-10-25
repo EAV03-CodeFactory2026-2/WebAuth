@@ -16,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -61,9 +63,14 @@ public class AuthController {
         return ResponseEntity.ok(authService.cambiarRol(authHeader, request.getRol()));
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, Object>> error(RuntimeException e) {
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> error(Exception e) {
         return switch (e) {
+            case MethodArgumentNotValidException m -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", m.getBindingResult().getFieldErrors().stream()
+                            .map(FieldError::getDefaultMessage)
+                            .findFirst()
+                            .orElse("Solicitud inválida.")));
             case SeleccionRolRequeridaException s -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", s.getMessage(), "rolesDisponibles", s.getRolesDisponibles()));
             case RolNoAsignadoException r -> ResponseEntity.status(HttpStatus.FORBIDDEN)

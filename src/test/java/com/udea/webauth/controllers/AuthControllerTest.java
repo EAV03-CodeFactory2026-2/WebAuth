@@ -104,7 +104,8 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
     }
 
     @Test
@@ -207,7 +208,8 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload));
 
-        resultado.andExpect(status().isBadRequest());
+        resultado.andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("El rol no puede estar vacío."));
         verifyNoInteractions(authService);
     }
 
