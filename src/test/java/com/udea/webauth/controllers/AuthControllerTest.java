@@ -256,33 +256,39 @@ class AuthControllerTest {
     }
 
     @Test
-    void validateRetornaTokenInvalidoSinConsultarServicioCuandoNoHayHeader() throws Exception {
+    void validateRetorna401ConValidFalseCuandoNoHayHeader() throws Exception {
+        when(authService.validateToken(null))
+                .thenReturn(ValidateTokenResponse.builder().valid(false).build());
+
         ResultActions resultado = mockMvc.perform(get("/api/v1/auth/validate"));
 
-        resultado.andExpect(status().isOk())
+        resultado.andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.valid").value(false));
-        verifyNoInteractions(authService);
+        verify(authService).validateToken(null);
     }
 
     @Test
-    void validateRetornaTokenInvalidoSinConsultarServicioCuandoHeaderEstaEnBlanco() throws Exception {
+    void validateRetorna401ConValidFalseCuandoHeaderEstaEnBlanco() throws Exception {
+        when(authService.validateToken("   "))
+                .thenReturn(ValidateTokenResponse.builder().valid(false).build());
+
         ResultActions resultado = mockMvc.perform(get("/api/v1/auth/validate")
                         .header("Authorization", "   "));
 
-        resultado.andExpect(status().isOk())
+        resultado.andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.valid").value(false));
-        verifyNoInteractions(authService);
+        verify(authService).validateToken("   ");
     }
 
     @Test
-    void validateRetorna200ConValidFalseCuandoTokenEsInvalido() throws Exception {
+    void validateRetorna401ConValidFalseCuandoTokenEsInvalido() throws Exception {
         when(authService.validateToken("Bearer invalid.token"))
                 .thenReturn(ValidateTokenResponse.builder().valid(false).build());
 
         ResultActions resultado = mockMvc.perform(get("/api/v1/auth/validate")
                         .header("Authorization", "Bearer invalid.token"));
 
-        resultado.andExpect(status().isOk())
+        resultado.andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.valid").value(false));
         verify(authService).validateToken("Bearer invalid.token");
     }

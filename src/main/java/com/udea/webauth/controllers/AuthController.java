@@ -15,7 +15,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.StringUtils;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
@@ -87,14 +86,13 @@ public class AuthController {
             description = "Verifica si el token Bearer JWT provisto es válido y retorna los datos decodificados de la sesión."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Token válido o inválido retornado con su respectivo estado.")
+            @ApiResponse(responseCode = "200", description = "Token válido retornado con los datos de la sesión."),
+            @ApiResponse(responseCode = "401", description = "Token ausente, inválido o expirado.")
     })
     @GetMapping("/validate")
     public ResponseEntity<ValidateTokenResponse> validateToken(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        if (!StringUtils.hasText(authHeader)) {
-            return ResponseEntity.ok(ValidateTokenResponse.builder().valid(false).build());
-        }
         ValidateTokenResponse response = authService.validateToken(authHeader);
-        return ResponseEntity.ok(response);
+        HttpStatus status = response.isValid() ? HttpStatus.OK : HttpStatus.UNAUTHORIZED;
+        return ResponseEntity.status(status).body(response);
     }
 }
