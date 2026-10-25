@@ -59,6 +59,11 @@ class JwtServiceTest {
     }
 
     @Test
+    void generateTokenLanzaNullPointerExceptionCuandoUsuarioIdEsNulo() {
+        assertThrows(NullPointerException.class, () -> jwtService.generateToken(null, CORREO, ROLES, ROL_ACTIVO));
+    }
+
+    @Test
     void extractRolesRetornaListaVaciaCuandoSeGeneraConRolesNulos() {
         String token = jwtService.generateToken(USUARIO_ID, CORREO, null, ROL_ACTIVO);
 
@@ -150,9 +155,7 @@ class JwtServiceTest {
     }
 
     @Test
-    void generateTokenLanzaWeakKeyExceptionCuandoSecretoTieneMenosDe256Bits() {
-        JwtService servicioDebil = new JwtService(SECRETO_DEBIL, EXPIRACION_MS);
-
-        assertThrows(WeakKeyException.class, () -> servicioDebil.generateToken(USUARIO_ID, CORREO, ROLES, ROL_ACTIVO));
+    void constructorLanzaWeakKeyExceptionCuandoSecretoTieneMenosDe256Bits() {
+        assertThrows(WeakKeyException.class, () -> new JwtService(SECRETO_DEBIL, EXPIRACION_MS));
     }
 }
