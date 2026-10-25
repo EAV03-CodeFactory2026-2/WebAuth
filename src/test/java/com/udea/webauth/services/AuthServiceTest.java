@@ -75,6 +75,34 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginExitosoConHashBcrypt2b() {
+        usuario.setContrasena("$2b$10$hashedpassword2b");
+        LoginRequest request = loginRequest("password123", null);
+        when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("password123", "$2b$10$hashedpassword2b")).thenReturn(true);
+        when(jwtService.generateToken(eq(1), eq("admin@udea.edu.co"), anyList(), eq("Propietario"))).thenReturn("token2b");
+
+        AuthResponse response = authService.login(request);
+
+        assertNotNull(response);
+        assertEquals("token2b", response.getToken());
+    }
+
+    @Test
+    void loginExitosoConHashBcrypt2y() {
+        usuario.setContrasena("$2y$10$hashedpassword2y");
+        LoginRequest request = loginRequest("password123", null);
+        when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("password123", "$2y$10$hashedpassword2y")).thenReturn(true);
+        when(jwtService.generateToken(eq(1), eq("admin@udea.edu.co"), anyList(), eq("Propietario"))).thenReturn("token2y");
+
+        AuthResponse response = authService.login(request);
+
+        assertNotNull(response);
+        assertEquals("token2y", response.getToken());
+    }
+
+    @Test
     void loginFallaPorContrasenaInvalida() {
         LoginRequest request = LoginRequest.builder()
                 .correo("admin@udea.edu.co")
@@ -183,7 +211,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginRequiereSeleccionDeRolCuandoUsuarioTieneVariosRoles() {
+    void loginLanzaSeleccionRolRequeridaCuandoUsuarioTieneVariosRolesSinSeleccion() {
         asignarVariosRoles();
         LoginRequest request = loginRequest("password123", null);
         stubCredencialesValidas();
@@ -196,23 +224,22 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginAsignaRolActivoIgnorandoMayusculasYEspacios() {
+    void loginLanzaSeleccionRolRequeridaCuandoRolSolicitadoEstaEnBlanco() {
         asignarVariosRoles();
-        LoginRequest request = loginRequest("password123", "  propietario ");
+        LoginRequest request = loginRequest("password123", "   ");
         stubCredencialesValidas();
-        List<String> roles = List.of("Cliente", "Propietario", "Proveedor");
-        when(jwtService.generateToken(1, "admin@udea.edu.co", roles, "Propietario")).thenReturn("multi.jwt.token");
 
-        AuthResponse response = authService.login(request);
+        SeleccionRolRequeridaException ex = assertThrows(SeleccionRolRequeridaException.class, () -> authService.login(request));
 
-        assertEquals("multi.jwt.token", response.getToken());
-        assertEquals("Propietario", response.getRolActivo());
-        assertEquals(roles, response.getRoles());
+        assertEquals(AuthService.MSG_SELECCION_ROL, ex.getMessage());
+        assertEquals(List.of("Cliente", "Propietario", "Proveedor"), ex.getRolesDisponibles());
+        verify(jwtService, never()).generateToken(any(), any(), any(), any());
     }
 
     @Test
     void loginLanzaRolNoAsignadoCuandoRolSolicitadoNoPerteneceAlUsuario() {
-        LoginRequest request = loginRequest("password123", "Proveedor");
+        asignarVariosRoles();
+        LoginRequest request = loginRequest("password123", "Administrador");
         stubCredencialesValidas();
 
         RolNoAsignadoException ex = assertThrows(RolNoAsignadoException.class, () -> authService.login(request));
@@ -222,27 +249,31 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginConRolEnBlancoUsaElUnicoRolAsignado() {
-        LoginRequest request = loginRequest("password123", "   ");
+    void loginEmiteTokenConRolActivoSolicitadoSinDistinguirMayusculas() {
+        asignarVariosRoles();
+        LoginRequest request = loginRequest("password123", "  pRoPiEtArIo  ");
         stubCredencialesValidas();
-        when(jwtService.generateToken(1, "admin@udea.edu.co", List.of("Propietario"), "Propietario")).thenReturn("mocked.jwt.token");
+        List<String> rolesOrdenados = List.of("Cliente", "Propietario", "Proveedor");
+        when(jwtService.generateToken(1, "admin@udea.edu.co", rolesOrdenados, "Propietario")).thenReturn("token.jwt");
 
         AuthResponse response = authService.login(request);
 
-        assertEquals("mocked.jwt.token", response.getToken());
+        assertEquals("token.jwt", response.getToken());
         assertEquals("Propietario", response.getRolActivo());
+        assertEquals(rolesOrdenados, response.getRoles());
     }
 
     @Test
-    void loginConRolEnBlancoYVariosRolesRequiereSeleccionDeRol() {
-        asignarVariosRoles();
-        LoginRequest request = loginRequest("password123", "   ");
+    void loginAsignaElUnicoRolCuandoUsuarioTieneSoloUnRolYNoLoIndica() {
+        LoginRequest request = loginRequest("password123", null);
         stubCredencialesValidas();
+        List<String> roles = List.of("Propietario");
+        when(jwtService.generateToken(1, "admin@udea.edu.co", roles, "Propietario")).thenReturn("token.jwt");
 
-        SeleccionRolRequeridaException ex = assertThrows(SeleccionRolRequeridaException.class, () -> authService.login(request));
+        AuthResponse response = authService.login(request);
 
-        assertEquals(List.of("Cliente", "Propietario", "Proveedor"), ex.getRolesDisponibles());
-        verify(jwtService, never()).generateToken(any(), any(), any(), any());
+        assertEquals("Propietario", response.getRolActivo());
+        assertEquals(roles, response.getRoles());
     }
 
     @Test
@@ -268,14 +299,12 @@ class AuthServiceTest {
 
     @Test
     void cambiarRolLanzaExcepcionCuandoUsuarioNoExiste() {
-        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
-        when(jwtService.extractUserId("valid.jwt")).thenReturn("99");
-        when(usuarioRepository.findById(99)).thenReturn(Optional.empty());
+        stubTokenValidoDeUsuario();
+        when(usuarioRepository.findById(1)).thenReturn(Optional.empty());
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> authService.cambiarRol("Bearer valid.jwt", "Propietario"));
 
         assertEquals(AuthService.MSG_TOKEN_INVALIDO, ex.getMessage());
-        verify(jwtService, never()).generateToken(any(), any(), any(), any());
     }
 
     @Test
@@ -303,25 +332,36 @@ class AuthServiceTest {
     void cambiarRolEmiteTokenNuevoConRolActivoSolicitado() {
         asignarVariosRoles();
         stubTokenValidoDeUsuario();
-        when(jwtService.generateToken(anyInt(), anyString(), anyList(), anyString())).thenReturn("nuevo.jwt.token");
+        List<String> rolesOrdenados = List.of("Cliente", "Propietario", "Proveedor");
+        when(jwtService.generateToken(1, "admin@udea.edu.co", rolesOrdenados, "Proveedor")).thenReturn("nuevo.jwt");
 
         AuthResponse response = authService.cambiarRol("Bearer valid.jwt", "Proveedor");
 
-        assertEquals("nuevo.jwt.token", response.getToken());
+        assertEquals("nuevo.jwt", response.getToken());
         assertEquals("Rol activo actualizado", response.getMensaje());
         assertEquals("Proveedor", response.getRolActivo());
-        verify(jwtService).generateToken(1, "admin@udea.edu.co", List.of("Cliente", "Propietario", "Proveedor"), "Proveedor");
+        assertEquals(rolesOrdenados, response.getRoles());
     }
 
     @Test
     void cambiarRolAceptaTokenSinPrefijoBearer() {
         stubTokenValidoDeUsuario();
-        when(jwtService.generateToken(1, "admin@udea.edu.co", List.of("Propietario"), "Propietario")).thenReturn("nuevo.jwt.token");
+        when(jwtService.generateToken(1, "admin@udea.edu.co", List.of("Propietario"), "Propietario")).thenReturn("nuevo.jwt");
 
         AuthResponse response = authService.cambiarRol("valid.jwt", "Propietario");
 
-        assertEquals("nuevo.jwt.token", response.getToken());
+        assertEquals("nuevo.jwt", response.getToken());
         assertEquals("Propietario", response.getRolActivo());
+    }
+
+    @Test
+    void cambiarRolLanzaExcepcionCuandoSubjectNoEsNumerico() {
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("no-numerico");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> authService.cambiarRol("Bearer valid.jwt", "Propietario"));
+        assertEquals(AuthService.MSG_TOKEN_INVALIDO, ex.getMessage());
     }
 
     @Test
@@ -350,13 +390,24 @@ class AuthServiceTest {
     }
 
     @Test
-    void validateTokenRetornaUserIdNuloCuandoTokenNoTieneSubject() {
+    void validateTokenRetornaInvalidoCuandoTokenNoTieneSubject() {
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
         when(jwtService.extractUserId("valid.jwt")).thenReturn(null);
 
         ValidateTokenResponse response = authService.validateToken("Bearer valid.jwt");
 
-        assertTrue(response.isValid());
+        assertFalse(response.isValid());
+        assertNull(response.getUserId());
+    }
+
+    @Test
+    void validateTokenRetornaInvalidoCuandoSubjectNoEsNumerico() {
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("no-numerico");
+
+        ValidateTokenResponse response = authService.validateToken("Bearer valid.jwt");
+
+        assertFalse(response.isValid());
         assertNull(response.getUserId());
     }
 

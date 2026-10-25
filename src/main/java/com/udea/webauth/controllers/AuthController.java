@@ -4,8 +4,6 @@ import com.udea.webauth.controllers.DTOs.AuthResponse;
 import com.udea.webauth.controllers.DTOs.CambiarRolRequest;
 import com.udea.webauth.controllers.DTOs.LoginRequest;
 import com.udea.webauth.controllers.DTOs.ValidateTokenResponse;
-import com.udea.webauth.exceptions.RolNoAsignadoException;
-import com.udea.webauth.exceptions.SeleccionRolRequeridaException;
 import com.udea.webauth.services.IAuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -13,12 +11,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -41,13 +36,8 @@ public class AuthController {
             @ApiResponse(responseCode = "403", description = "El usuario no tiene asignado el rol solicitado.")
     })
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
-        try {
-            AuthResponse response = authService.login(request);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return error(e);
-        }
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
     }
 
     @Operation(
@@ -61,25 +51,9 @@ public class AuthController {
             @ApiResponse(responseCode = "403", description = "El usuario no tiene asignado el rol solicitado.")
     })
     @PostMapping("/cambiar-rol")
-    public ResponseEntity<?> cambiarRol(@RequestHeader(value = "Authorization", required = false) String authHeader,
-                                        @Valid @RequestBody CambiarRolRequest request) {
-        try {
-            return ResponseEntity.ok(authService.cambiarRol(authHeader, request.getRol()));
-        } catch (RuntimeException e) {
-            return error(e);
-        }
-    }
-
-    private ResponseEntity<Map<String, Object>> error(RuntimeException e) {
-        return switch (e) {
-            case SeleccionRolRequeridaException s -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", s.getMessage(), "rolesDisponibles", s.getRolesDisponibles()));
-            case RolNoAsignadoException r -> ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", r.getMessage()));
-            case IllegalArgumentException i -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("error", i.getMessage()));
-            default -> throw e;
-        };
+    public ResponseEntity<AuthResponse> cambiarRol(@RequestHeader(value = "Authorization", required = false) String authHeader,
+                                                   @Valid @RequestBody CambiarRolRequest request) {
+        return ResponseEntity.ok(authService.cambiarRol(authHeader, request.getRol()));
     }
 
     @Operation(

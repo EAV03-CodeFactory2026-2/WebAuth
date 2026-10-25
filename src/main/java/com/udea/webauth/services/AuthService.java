@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,13 +35,15 @@ public class AuthService implements IAuthService {
 
     @Override
     public AuthResponse login(LoginRequest request) {
-        UsuarioAuth usuario = usuarioRepository.findByCorreo(request.getCorreo()).orElse(new UsuarioAuth());
-        String guardada = Objects.requireNonNullElse(usuario.getContrasena(), "");
-        boolean match = guardada.startsWith("$2a$")
-                ? passwordEncoder.matches(request.getContrasena(), guardada)
-                : guardada.equals(request.getContrasena());
+        UsuarioAuth usuario = usuarioRepository.findByCorreo(request.getCorreo()).orElse(null);
+        if (usuario == null) {
+            throw new IllegalArgumentException("Credenciales inválidas.");
+        }
 
-        if (!match) {
+        String guardada = Objects.requireNonNullElse(usuario.getContrasena(), "");
+        String enviada = Objects.requireNonNullElse(request.getContrasena(), "");
+
+        if (!verificarContrasena(enviada, guardada)) {
             throw new IllegalArgumentException("Credenciales inválidas.");
         }
 
@@ -51,7 +55,7 @@ public class AuthService implements IAuthService {
         // Los roles se releen de la BD: si al usuario le quitaron un rol, no puede volver a activarlo.
         UsuarioAuth usuario = extraerTokenValido(token)
                 .map(jwtService::extractUserId)
-                .map(Integer::valueOf)
+                .flatMap(this::parseUserId)
                 .flatMap(usuarioRepository::findById)
                 .orElse(null);
 
@@ -70,17 +74,40 @@ public class AuthService implements IAuthService {
             return ValidateTokenResponse.builder().valid(false).build();
         }
 
-        Integer userId = Optional.ofNullable(jwtService.extractUserId(jwt))
-                .map(Integer::valueOf)
-                .orElse(null);
+        String sub = jwtService.extractUserId(jwt);
+        Optional<Integer> userIdOpt = parseUserId(sub);
+        if (userIdOpt.isEmpty()) {
+            return ValidateTokenResponse.builder().valid(false).build();
+        }
 
         return ValidateTokenResponse.builder()
                 .valid(true)
-                .userId(userId)
+                .userId(userIdOpt.get())
                 .email(jwtService.extractEmail(jwt))
                 .roles(jwtService.extractRoles(jwt))
                 .rolActivo(jwtService.extractRolActivo(jwt))
                 .build();
+    }
+
+    private boolean verificarContrasena(String enviada, String guardada) {
+        if (guardada.isEmpty() || enviada.isEmpty()) {
+            return false;
+        }
+        if (guardada.startsWith("$2")) {
+            return passwordEncoder.matches(enviada, guardada);
+        }
+        return MessageDigest.isEqual(
+                guardada.getBytes(StandardCharsets.UTF_8),
+                enviada.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    private Optional<Integer> parseUserId(String sub) {
+        try {
+            return Optional.ofNullable(sub).map(Integer::valueOf);
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
     }
 
     private AuthResponse emitirToken(UsuarioAuth usuario, String rolSolicitado, String mensaje) {
@@ -127,7 +154,10 @@ public class AuthService implements IAuthService {
     }
 
     private Optional<String> extraerTokenValido(String token) {
-        return Optional.ofNullable(StringUtils.delete(token, "Bearer "))
+        return Optional.ofNullable(token)
+                .map(String::trim)
+                .filter(t -> !t.isEmpty())
+                .map(t -> t.regionMatches(true, 0, "Bearer ", 0, 7) ? t.substring(7).trim() : t)
                 .filter(jwtService::isTokenValid);
     }
 }

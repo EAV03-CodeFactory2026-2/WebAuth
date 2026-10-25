@@ -1,40 +1,45 @@
 package com.udea.webauth.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.SecretKey;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 
+@Slf4j
 @Service
 public class JwtService implements IJwtService {
 
-    private final String secret;
+    private final SecretKey signingKey;
     private final long expirationMs;
 
     public JwtService(@Value("${app.jwt.secret}") String secret,
                       @Value("${app.jwt.expiration-ms}") long expirationMs) {
-        this.secret = secret;
+        this.signingKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
         this.expirationMs = expirationMs;
     }
 
     @Override
     public String generateToken(Integer usuarioId, String email, List<String> roles, String rolActivo) {
+        Objects.requireNonNull(usuarioId, "El usuarioId no puede ser nulo.");
         long now = System.currentTimeMillis();
         return Jwts.builder()
-                .subject(String.valueOf(usuarioId))
+                .subject(usuarioId.toString())
                 .claim("email", email)
                 .claim("roles", Objects.requireNonNullElse(roles, Collections.emptyList()))
                 .claim("rolActivo", rolActivo)
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + expirationMs))
-                .signWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret)))
+                .signWith(signingKey)
                 .compact();
     }
 
@@ -62,15 +67,20 @@ public class JwtService implements IJwtService {
     @Override
     public boolean isTokenValid(String token) {
         try {
-            return extractAllClaims(token).getExpiration().after(new Date());
+            Date expiration = extractAllClaims(token).getExpiration();
+            return expiration != null && expiration.after(new Date());
+        } catch (JwtException | IllegalArgumentException e) {
+            log.debug("Token JWT no válido: {}", e.getMessage());
+            return false;
         } catch (Exception e) {
+            log.warn("Fallo inesperado al validar token JWT: {}", e.getMessage());
             return false;
         }
     }
 
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret)))
+                .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

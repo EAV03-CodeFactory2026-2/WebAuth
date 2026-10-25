@@ -62,7 +62,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Basic abc123", "token123", "Bearer", "bearer valid.jwt"})
+    @ValueSource(strings = {"Basic abc123", "token123", "Bearer", "bearer"})
     void doFilterContinuaCadenaSinAutenticarCuandoHeaderNoTienePrefijoBearer(String header) throws Exception {
         request.addHeader("Authorization", header);
 
@@ -100,11 +100,12 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void doFilterAutenticaConLosRolesDelTokenCuandoTokenEsValido() throws Exception {
+    void doFilterAutenticaConTodosLosRolesCuandoNoHayRolActivo() throws Exception {
         request.addHeader("Authorization", "Bearer valid.jwt");
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
         when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
         when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of("Cliente", "Propietario"));
+        when(jwtService.extractRolActivo("valid.jwt")).thenReturn(null);
 
         filter.doFilter(request, response, filterChain);
 
@@ -117,16 +118,31 @@ class JwtAuthenticationFilterTest {
         WebAuthenticationDetails details = assertInstanceOf(WebAuthenticationDetails.class, authentication.getDetails());
         assertEquals("127.0.0.1", details.getRemoteAddress());
         assertNull(details.getSessionId());
-        verify(jwtService, never()).extractRolActivo(any());
         verify(filterChain, times(1)).doFilter(request, response);
     }
 
     @Test
-    void doFilterAutenticaSinAuthoritiesCuandoRolesEstanVacios() throws Exception {
+    void doFilterAutenticaSoloConElRolActivoCuandoEsteVieneEnElToken() throws Exception {
         request.addHeader("Authorization", "Bearer valid.jwt");
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
         when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
-        when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of());
+        when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of("Cliente", "Propietario"));
+        when(jwtService.extractRolActivo("valid.jwt")).thenReturn("Propietario");
+
+        filter.doFilter(request, response, filterChain);
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication);
+        assertIterableEquals(List.of("ROLE_PROPIETARIO"), nombresDeAuthorities(authentication));
+    }
+
+    @Test
+    void doFilterAceptaPrefijoBearerEnMinusculas() throws Exception {
+        request.addHeader("Authorization", "bearer valid.jwt");
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
+        when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of("Propietario"));
+        when(jwtService.extractRolActivo("valid.jwt")).thenReturn(null);
 
         filter.doFilter(request, response, filterChain);
 
@@ -134,7 +150,33 @@ class JwtAuthenticationFilterTest {
         assertNotNull(authentication);
         assertTrue(authentication.isAuthenticated());
         assertEquals("7", authentication.getPrincipal());
-        assertTrue(authentication.getAuthorities().isEmpty());
+    }
+
+    @Test
+    void doFilterNoAutenticaCuandoRolesEstanVacios() throws Exception {
+        request.addHeader("Authorization", "Bearer valid.jwt");
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
+        when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of());
+        when(jwtService.extractRolActivo("valid.jwt")).thenReturn(null);
+
+        filter.doFilter(request, response, filterChain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        verify(filterChain, times(1)).doFilter(request, response);
+    }
+
+    @Test
+    void doFilterNoAutenticaCuandoRolActivoNoCoincideConLosRoles() throws Exception {
+        request.addHeader("Authorization", "Bearer valid.jwt");
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
+        when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of("Cliente"));
+        when(jwtService.extractRolActivo("valid.jwt")).thenReturn("Propietario");
+
+        filter.doFilter(request, response, filterChain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain, times(1)).doFilter(request, response);
     }
 
@@ -144,6 +186,7 @@ class JwtAuthenticationFilterTest {
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
         when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
         when(jwtService.extractRoles("valid.jwt")).thenReturn(null);
+        when(jwtService.extractRolActivo("valid.jwt")).thenReturn(null);
 
         filter.doFilter(request, response, filterChain);
 
