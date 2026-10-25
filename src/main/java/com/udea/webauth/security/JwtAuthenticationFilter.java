@@ -11,6 +11,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -45,6 +46,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     List<String> roles = jwtService.extractRoles(jwt);
+                    String rolActivo = jwtService.extractRolActivo(jwt);
+                    // Con un rol activo en el token, el usuario solo opera con ese rol (si realmente lo tiene).
+                    // Sin el claim se conservan todos los roles, como hasta ahora.
+                    if (StringUtils.hasText(rolActivo)) {
+                        roles = roles.stream()
+                                .filter(rolActivo::equalsIgnoreCase)
+                                .toList();
+                    }
                     var authorities = roles.stream()
                             .map(r -> new SimpleGrantedAuthority("ROLE_" + r.toUpperCase()))
                             .toList();
