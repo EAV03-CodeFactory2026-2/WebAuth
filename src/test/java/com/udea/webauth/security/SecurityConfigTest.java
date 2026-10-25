@@ -1,7 +1,11 @@
 package com.udea.webauth.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -54,5 +58,18 @@ class SecurityConfigTest {
         assertTrue(encoder.matches("Secreto#123", hash2a));
         assertTrue(encoder.matches("Secreto#123", hash2b));
         assertTrue(encoder.matches("Secreto#123", hash2y));
+    }
+
+    @Test
+    void authenticationEntryPointResponde401ConCuerpoJsonError() throws Exception {
+        SecurityConfig securityConfig = new SecurityConfig(mock(JwtAuthenticationFilter.class));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/protegido");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        securityConfig.authenticationEntryPoint().commence(request, response, new BadCredentialsException("No autenticado"));
+
+        assertEquals(HttpServletResponse.SC_UNAUTHORIZED, response.getStatus());
+        assertTrue(response.getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE));
+        assertEquals("{\"error\":\"Token inválido o expirado.\"}", response.getContentAsString());
     }
 }
