@@ -125,7 +125,7 @@ public class AuthService implements IAuthService {
 
     private Optional<String> extraerTokenValido(String token) {
         return Optional.ofNullable(token)
-                .filter(t -> t.startsWith("Bearer "))
+                .filter(t -> t.regionMatches(true, 0, "Bearer ", 0, 7))
                 .map(t -> t.substring(7))
                 .filter(jwtService::isTokenValid);
     }

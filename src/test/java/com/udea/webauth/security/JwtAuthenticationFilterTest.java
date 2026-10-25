@@ -62,7 +62,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Basic abc123", "token123", "Bearer", "bearer valid.jwt"})
+    @ValueSource(strings = {"Basic abc123", "token123", "Bearer"})
     void doFilterContinuaCadenaSinAutenticarCuandoHeaderNoTienePrefijoBearer(String header) throws Exception {
         request.addHeader("Authorization", header);
 
@@ -71,6 +71,21 @@ class JwtAuthenticationFilterTest {
         assertNull(SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain, times(1)).doFilter(request, response);
         verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void doFilterAutenticaCuandoEsquemaBearerEstaEnMinusculas() throws Exception {
+        request.addHeader("Authorization", "bearer valid.jwt");
+        when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
+        when(jwtService.extractUserId("valid.jwt")).thenReturn("7");
+        when(jwtService.extractRoles("valid.jwt")).thenReturn(List.of("Cliente"));
+
+        filter.doFilter(request, response, filterChain);
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication);
+        assertEquals("7", authentication.getPrincipal());
+        verify(filterChain, times(1)).doFilter(request, response);
     }
 
     @Test
