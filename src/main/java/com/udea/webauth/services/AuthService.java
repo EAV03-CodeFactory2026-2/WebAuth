@@ -63,20 +63,16 @@ public class AuthService implements IAuthService {
     @Override
     public ValidateTokenResponse validateToken(String token) {
         String jwt = extraerTokenValido(token)
-                .filter(t -> Objects.requireNonNullElse(jwtService.extractUserId(t), "0").matches("\\d+"))
+                .filter(t -> Objects.requireNonNullElse(jwtService.extractUserId(t), "").matches("\\d+"))
                 .orElse(null);
 
         if (jwt == null) {
             return ValidateTokenResponse.builder().valid(false).build();
         }
 
-        Integer userId = Optional.ofNullable(jwtService.extractUserId(jwt))
-                .map(Integer::valueOf)
-                .orElse(null);
-
         return ValidateTokenResponse.builder()
                 .valid(true)
-                .userId(userId)
+                .userId(Integer.valueOf(jwtService.extractUserId(jwt)))
                 .email(jwtService.extractEmail(jwt))
                 .roles(jwtService.extractRoles(jwt))
                 .rolActivo(jwtService.extractRolActivo(jwt))

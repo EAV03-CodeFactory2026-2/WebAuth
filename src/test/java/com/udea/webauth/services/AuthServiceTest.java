@@ -364,14 +364,17 @@ class AuthServiceTest {
     }
 
     @Test
-    void validateTokenRetornaUserIdNuloCuandoTokenNoTieneSubject() {
+    void validateTokenRetornaInvalidoCuandoTokenNoTieneSubject() {
         when(jwtService.isTokenValid("valid.jwt")).thenReturn(true);
         when(jwtService.extractUserId("valid.jwt")).thenReturn(null);
 
         ValidateTokenResponse response = authService.validateToken("Bearer valid.jwt");
 
-        assertTrue(response.isValid());
+        assertFalse(response.isValid());
         assertNull(response.getUserId());
+        verify(jwtService, never()).extractEmail(any());
+        verify(jwtService, never()).extractRoles(any());
+        verify(jwtService, never()).extractRolActivo(any());
     }
 
     @Test
