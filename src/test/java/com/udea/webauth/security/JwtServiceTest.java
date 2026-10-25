@@ -153,4 +153,13 @@ class JwtServiceTest {
     void constructorLanzaWeakKeyExceptionCuandoSecretoTieneMenosDe256Bits() {
         assertThrows(WeakKeyException.class, () -> new JwtService(SECRETO_DEBIL, EXPIRACION_MS));
     }
+
+    @Test
+    void generateTokenLanzaNullPointerExceptionCuandoUsuarioIdEsNulo() {
+        NullPointerException ex = assertThrows(
+                NullPointerException.class,
+                () -> jwtService.generateToken(null, CORREO, ROLES, ROL_ACTIVO)
+        );
+        assertEquals("El ID del usuario es obligatorio.", ex.getMessage());
+    }
 }

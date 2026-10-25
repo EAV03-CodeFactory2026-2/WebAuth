@@ -32,7 +32,7 @@ public class JwtService implements IJwtService {
     public String generateToken(Integer usuarioId, String email, List<String> roles, String rolActivo) {
         long now = System.currentTimeMillis();
         return Jwts.builder()
-                .subject(String.valueOf(usuarioId))
+                .subject(Objects.requireNonNull(usuarioId, "El ID del usuario es obligatorio.").toString())
                 .claim("email", email)
                 .claim("roles", Objects.requireNonNullElse(roles, Collections.emptyList()))
                 .claim("rolActivo", rolActivo)
