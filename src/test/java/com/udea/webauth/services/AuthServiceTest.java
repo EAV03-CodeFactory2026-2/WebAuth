@@ -160,6 +160,19 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginFallaCuandoContrasenaEnviadaEsNula() {
+        LoginRequest request = loginRequest(null, null);
+        when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("", "$2a$10$hashedpassword")).thenReturn(false);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> authService.login(request));
+
+        assertEquals("Credenciales inválidas.", ex.getMessage());
+        verify(passwordEncoder).matches("", "$2a$10$hashedpassword");
+        verify(jwtService, never()).generateToken(any(), any(), any(), any());
+    }
+
+    @Test
     void loginLanzaRolNoAsignadoCuandoUsuarioNoTieneRoles() {
         usuario.setRoles(Set.of());
         LoginRequest request = loginRequest("password123", null);
