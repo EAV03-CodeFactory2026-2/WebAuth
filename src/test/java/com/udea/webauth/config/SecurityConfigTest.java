@@ -1,5 +1,6 @@
-package com.udea.webauth.security;
+package com.udea.webauth.config;
 
+import com.udea.webauth.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;

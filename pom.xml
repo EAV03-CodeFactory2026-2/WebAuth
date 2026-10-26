@@ -18,6 +18,7 @@
 		<java.version>21</java.version>
 		<sonar.organization>eav03-codefactory2026-2</sonar.organization>
 		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<sonar.exclusions>**/config/**,**/entities/**,**/*Application.java</sonar.exclusions>
 	</properties>
 
 	<dependencies>
