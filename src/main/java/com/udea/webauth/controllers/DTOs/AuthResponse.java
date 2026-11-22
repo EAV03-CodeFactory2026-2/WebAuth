@@ -13,6 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 public class AuthResponse {
     private String token;
+    private String refreshToken;
     private String mensaje;
     private String rolActivo;
     private List<String> roles;

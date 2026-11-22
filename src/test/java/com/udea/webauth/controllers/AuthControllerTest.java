@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.udea.webauth.controllers.DTOs.AuthResponse;
 import com.udea.webauth.controllers.DTOs.CambiarRolRequest;
 import com.udea.webauth.controllers.DTOs.LoginRequest;
+import com.udea.webauth.controllers.DTOs.RefreshTokenRequest;
 import com.udea.webauth.controllers.DTOs.ValidateTokenResponse;
 import com.udea.webauth.exceptions.RolNoAsignadoException;
 import com.udea.webauth.exceptions.SeleccionRolRequeridaException;
@@ -291,6 +292,78 @@ class AuthControllerTest {
         resultado.andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.valid").value(false));
         verify(authService).validateToken("Bearer invalid.token");
+    }
+
+    @Test
+    void refreshRetorna200ConNuevosTokensCuandoEsValido() throws Exception {
+        AuthResponse response = AuthResponse.builder()
+                .token("new.jwt.token")
+                .refreshToken("new.refresh.token")
+                .rolActivo("Propietario")
+                .roles(List.of("Propietario"))
+                .mensaje("Token renovado")
+                .build();
+
+        when(authService.refreshToken(any(RefreshTokenRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                RefreshTokenRequest.builder().refreshToken("valid.refresh").build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value("new.jwt.token"))
+                .andExpect(jsonPath("$.refreshToken").value("new.refresh.token"))
+                .andExpect(jsonPath("$.rolActivo").value("Propietario"))
+                .andExpect(jsonPath("$.mensaje").value("Token renovado"));
+    }
+
+    @Test
+    void refreshRetorna400CuandoRefreshTokenEstaEnBlanco() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                RefreshTokenRequest.builder().refreshToken("   ").build())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("El refresh token es obligatorio."));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void refreshRetorna401CuandoRefreshTokenEsInvalidoOExpirado() throws Exception {
+        when(authService.refreshToken(any(RefreshTokenRequest.class)))
+                .thenThrow(new IllegalArgumentException("Refresh token inválido o expirado."));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                RefreshTokenRequest.builder().refreshToken("expired.refresh").build())))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("Refresh token inválido o expirado."));
+    }
+
+    @Test
+    void logoutRetorna200CuandoRevocaRefreshToken() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                RefreshTokenRequest.builder().refreshToken("valid.refresh").build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mensaje").value("Sesión cerrada correctamente."));
+
+        verify(authService).logout(any(RefreshTokenRequest.class));
+    }
+
+    @Test
+    void logoutRetorna400CuandoRefreshTokenEstaEnBlanco() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                RefreshTokenRequest.builder().refreshToken("").build())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("El refresh token es obligatorio."));
+
+        verifyNoInteractions(authService);
     }
 
     private String cambiarRolJson(String rol) throws Exception {

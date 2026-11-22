@@ -2,7 +2,9 @@ package com.udea.webauth.services;
 
 import com.udea.webauth.controllers.DTOs.AuthResponse;
 import com.udea.webauth.controllers.DTOs.LoginRequest;
+import com.udea.webauth.controllers.DTOs.RefreshTokenRequest;
 import com.udea.webauth.controllers.DTOs.ValidateTokenResponse;
+import com.udea.webauth.entities.RefreshToken;
 import com.udea.webauth.entities.RolAuth;
 import com.udea.webauth.entities.UsuarioAuth;
 import com.udea.webauth.exceptions.RolNoAsignadoException;
@@ -12,6 +14,7 @@ import com.udea.webauth.security.IJwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
@@ -30,6 +33,7 @@ public class AuthService implements IAuthService {
     private final UsuarioAuthRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
     private final IJwtService jwtService;
+    private final IRefreshTokenService refreshTokenService;
 
     @Override
     public AuthResponse login(LoginRequest request) {
@@ -59,6 +63,22 @@ public class AuthService implements IAuthService {
         }
 
         return emitirToken(usuario, rol, "Rol activo actualizado");
+    }
+
+    @Override
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
+    public AuthResponse refreshToken(RefreshTokenRequest request) {
+        RefreshToken token = refreshTokenService.validarToken(request.getRefreshToken());
+        UsuarioAuth usuario = token.getUsuario();
+        String rolActivo = token.getRolActivo();
+
+        refreshTokenService.revocarToken(token);
+        return emitirToken(usuario, rolActivo, "Token renovado");
+    }
+
+    @Override
+    public void logout(RefreshTokenRequest request) {
+        refreshTokenService.revocarPorToken(request.getRefreshToken());
     }
 
     @Override
@@ -92,9 +112,11 @@ public class AuthService implements IAuthService {
 
         String rolActivo = resolverRolActivo(roles, rolSolicitado);
         String jwtToken = jwtService.generateToken(usuario.getIdUsuario(), usuario.getCorreo(), roles, rolActivo);
+        String refreshToken = refreshTokenService.crearRefreshToken(usuario, rolActivo);
 
         return AuthResponse.builder()
                 .token(jwtToken)
+                .refreshToken(refreshToken)
                 .mensaje(mensaje)
                 .rolActivo(rolActivo)
                 .roles(roles)

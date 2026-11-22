@@ -2,7 +2,9 @@ package com.udea.webauth.services;
 
 import com.udea.webauth.controllers.DTOs.AuthResponse;
 import com.udea.webauth.controllers.DTOs.LoginRequest;
+import com.udea.webauth.controllers.DTOs.RefreshTokenRequest;
 import com.udea.webauth.controllers.DTOs.ValidateTokenResponse;
+import com.udea.webauth.entities.RefreshToken;
 import com.udea.webauth.entities.RolAuth;
 import com.udea.webauth.entities.UsuarioAuth;
 import com.udea.webauth.exceptions.RolNoAsignadoException;
@@ -37,6 +39,9 @@ class AuthServiceTest {
     @Mock
     private IJwtService jwtService;
 
+    @Mock
+    private IRefreshTokenService refreshTokenService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -66,11 +71,13 @@ class AuthServiceTest {
         when(usuarioRepository.findByCorreo("admin@udea.edu.co")).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("password123", "$2a$10$hashedpassword")).thenReturn(true);
         when(jwtService.generateToken(eq(1), eq("admin@udea.edu.co"), anyList(), eq("Propietario"))).thenReturn("mocked.jwt.token");
+        when(refreshTokenService.crearRefreshToken(usuario, "Propietario")).thenReturn("mocked.refresh.token");
 
         AuthResponse response = authService.login(request);
 
         assertNotNull(response);
         assertEquals("mocked.jwt.token", response.getToken());
+        assertEquals("mocked.refresh.token", response.getRefreshToken());
         assertEquals("Autenticación exitosa", response.getMensaje());
     }
 
@@ -394,6 +401,75 @@ class AuthServiceTest {
         assertFalse(response.isValid());
         assertNull(response.getUserId());
         verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void refreshTokenExitosoRotaTokenYEmiteNuevoJwt() {
+        RefreshToken stored = RefreshToken.builder()
+                .idRefreshToken(1L)
+                .usuario(usuario)
+                .rolActivo("Propietario")
+                .build();
+
+        when(refreshTokenService.validarToken("old.refresh")).thenReturn(stored);
+        when(jwtService.generateToken(eq(1), eq("admin@udea.edu.co"), anyList(), eq("Propietario"))).thenReturn("new.jwt.token");
+        when(refreshTokenService.crearRefreshToken(usuario, "Propietario")).thenReturn("new.refresh");
+
+        AuthResponse response = authService.refreshToken(RefreshTokenRequest.builder().refreshToken("old.refresh").build());
+
+        assertEquals("new.jwt.token", response.getToken());
+        assertEquals("new.refresh", response.getRefreshToken());
+        assertEquals("Propietario", response.getRolActivo());
+        assertEquals("Token renovado", response.getMensaje());
+        verify(refreshTokenService).revocarToken(stored);
+    }
+
+    @Test
+    void refreshTokenFallaCuandoUsuarioEstaInactivo() {
+        usuario.setEstado("Inactivo");
+        RefreshToken stored = RefreshToken.builder()
+                .idRefreshToken(1L)
+                .usuario(usuario)
+                .rolActivo("Propietario")
+                .build();
+
+        when(refreshTokenService.validarToken("old.refresh")).thenReturn(stored);
+
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> authService.refreshToken(RefreshTokenRequest.builder().refreshToken("old.refresh").build())
+        );
+
+        assertEquals("El usuario se encuentra inactivo.", ex.getMessage());
+        verify(refreshTokenService).revocarToken(stored);
+        verify(jwtService, never()).generateToken(any(), any(), any(), any());
+    }
+
+    @Test
+    void refreshTokenFallaCuandoRolFueRemovido() {
+        RefreshToken stored = RefreshToken.builder()
+                .idRefreshToken(1L)
+                .usuario(usuario)
+                .rolActivo("Cliente")
+                .build();
+
+        when(refreshTokenService.validarToken("old.refresh")).thenReturn(stored);
+
+        RolNoAsignadoException ex = assertThrows(
+                RolNoAsignadoException.class,
+                () -> authService.refreshToken(RefreshTokenRequest.builder().refreshToken("old.refresh").build())
+        );
+
+        assertEquals(AuthService.MSG_ROL_NO_ASIGNADO, ex.getMessage());
+        verify(refreshTokenService).revocarToken(stored);
+        verify(jwtService, never()).generateToken(any(), any(), any(), any());
+    }
+
+    @Test
+    void logoutRevocaRefreshToken() {
+        authService.logout(RefreshTokenRequest.builder().refreshToken("token.a.revocar").build());
+
+        verify(refreshTokenService).revocarPorToken("token.a.revocar");
     }
 
     private LoginRequest loginRequest(String contrasena, String rol) {

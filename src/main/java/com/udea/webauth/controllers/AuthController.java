@@ -3,6 +3,7 @@ package com.udea.webauth.controllers;
 import com.udea.webauth.controllers.DTOs.AuthResponse;
 import com.udea.webauth.controllers.DTOs.CambiarRolRequest;
 import com.udea.webauth.controllers.DTOs.LoginRequest;
+import com.udea.webauth.controllers.DTOs.RefreshTokenRequest;
 import com.udea.webauth.controllers.DTOs.ValidateTokenResponse;
 import com.udea.webauth.exceptions.RolNoAsignadoException;
 import com.udea.webauth.exceptions.SeleccionRolRequeridaException;
@@ -60,6 +61,35 @@ public class AuthController {
     public ResponseEntity<AuthResponse> cambiarRol(@RequestHeader(value = "Authorization", required = false) String authHeader,
                                         @Valid @RequestBody CambiarRolRequest request) {
         return ResponseEntity.ok(authService.cambiarRol(authHeader, request.getRol()));
+    }
+
+    @Operation(
+            summary = "Renovar token de acceso",
+            description = "Con un refresh token válido y no revocado, emite un nuevo par de access token JWT y refresh token."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Token renovado exitosamente."),
+            @ApiResponse(responseCode = "400", description = "Refresh token ausente o vacío."),
+            @ApiResponse(responseCode = "401", description = "Refresh token inválido, revocado o expirado, o usuario inactivo."),
+            @ApiResponse(responseCode = "403", description = "El usuario ya no tiene asignado el rol activo.")
+    })
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        return ResponseEntity.ok(authService.refreshToken(request));
+    }
+
+    @Operation(
+            summary = "Cerrar sesión",
+            description = "Revoca el refresh token provisto para impedir futuras renovaciones de sesión."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Sesión cerrada correctamente."),
+            @ApiResponse(responseCode = "400", description = "Refresh token ausente o vacío.")
+    })
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, String>> logout(@Valid @RequestBody RefreshTokenRequest request) {
+        authService.logout(request);
+        return ResponseEntity.ok(Map.of("mensaje", "Sesión cerrada correctamente."));
     }
 
     @ExceptionHandler(Exception.class)
