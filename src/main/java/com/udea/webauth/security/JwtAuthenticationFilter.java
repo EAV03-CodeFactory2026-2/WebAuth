@@ -37,45 +37,47 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         final String authHeader = Objects.requireNonNullElse(request.getHeader("Authorization"), "");
 
-        if (!authHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
+        java.util.Optional.of(authHeader)
+                .filter(header -> header.regionMatches(true, 0, "Bearer ", 0, 7))
+                .map(header -> header.substring(7))
+                .ifPresent(jwt -> authenticateValidToken(request, jwt));
 
-        final String jwt = authHeader.substring(7);
+        filterChain.doFilter(request, response);
+    }
 
+    private void authenticateValidToken(HttpServletRequest request, String jwt) {
         try {
-            if (jwtService.isTokenValid(jwt)) {
-                String userId = jwtService.extractUserId(jwt);
-
-                if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    List<String> roles = Objects.requireNonNullElse(jwtService.extractRoles(jwt), List.of());
-                    String rolActivo = jwtService.extractRolActivo(jwt);
-                    // Con un rol activo en el token, el usuario solo opera con ese rol (si realmente lo tiene).
-                    // Sin el claim se conservan todos los roles, como hasta ahora.
-                    if (StringUtils.hasText(rolActivo)) {
-                        roles = roles.stream()
-                                .filter(rolActivo::equalsIgnoreCase)
-                                .toList();
-                    }
-                    var authorities = roles.stream()
-                            .map(r -> new SimpleGrantedAuthority("ROLE_" + r.toUpperCase(Locale.ROOT)))
-                            .toList();
-
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            userId,
-                            null,
-                            authorities
-                    );
-
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                }
-            }
+            java.util.Optional.of(jwt)
+                    .filter(jwtService::isTokenValid)
+                    .map(jwtService::extractUserId)
+                    .filter(Objects::nonNull)
+                    .filter(userId -> SecurityContextHolder.getContext().getAuthentication() == null)
+                    .ifPresent(userId -> authenticate(request, jwt));
         } catch (JwtException | IllegalArgumentException e) {
             log.debug("No se pudo autenticar el token JWT: {}", e.getMessage());
         }
+    }
 
-        filterChain.doFilter(request, response);
+    private void authenticate(HttpServletRequest request, String jwt) {
+        List<String> roles = Objects.requireNonNullElse(jwtService.extractRoles(jwt), List.of());
+        String rolActivo = jwtService.extractRolActivo(jwt);
+
+        if (StringUtils.hasText(rolActivo)) {
+            roles = roles.stream()
+                    .filter(rolActivo::equalsIgnoreCase)
+                    .toList();
+        }
+
+        var authorities = roles.stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase(Locale.ROOT)))
+                .toList();
+
+        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                jwtService.extractUserId(jwt),
+                null,
+                authorities
+        );
+        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authToken);
     }
 }

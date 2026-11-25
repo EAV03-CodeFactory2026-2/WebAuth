@@ -41,9 +41,9 @@ public class AuthService implements IAuthService {
         String enviada = Objects.requireNonNullElse(request.getContrasena(), "");
         String guardada = Objects.requireNonNullElse(usuario.getContrasena(), "");
 
-        if (!passwordEncoder.matches(enviada, guardada)) {
-            throw new IllegalArgumentException("Credenciales inválidas.");
-        }
+        Optional.of(passwordEncoder.matches(enviada, guardada))
+                .filter(Boolean::booleanValue)
+                .orElseThrow(() -> new IllegalArgumentException("Credenciales inválidas."));
 
         return emitirToken(usuario, request.getRol(), "Autenticación exitosa");
     }
@@ -58,11 +58,12 @@ public class AuthService implements IAuthService {
                 .flatMap(usuarioRepository::findById)
                 .orElse(null);
 
-        if (usuario == null) {
-            throw new IllegalArgumentException(MSG_TOKEN_INVALIDO);
-        }
-
-        return emitirToken(usuario, rol, "Rol activo actualizado");
+        return emitirToken(
+                Optional.ofNullable(usuario)
+                        .orElseThrow(() -> new IllegalArgumentException(MSG_TOKEN_INVALIDO)),
+                rol,
+                "Rol activo actualizado"
+        );
     }
 
     @Override
@@ -87,23 +88,21 @@ public class AuthService implements IAuthService {
                 .filter(t -> Objects.requireNonNullElse(jwtService.extractUserId(t), "").matches("\\d+"))
                 .orElse(null);
 
-        if (jwt == null) {
-            return ValidateTokenResponse.builder().valid(false).build();
-        }
-
-        return ValidateTokenResponse.builder()
-                .valid(true)
-                .userId(Integer.valueOf(jwtService.extractUserId(jwt)))
-                .email(jwtService.extractEmail(jwt))
-                .roles(jwtService.extractRoles(jwt))
-                .rolActivo(jwtService.extractRolActivo(jwt))
-                .build();
+        return Optional.ofNullable(jwt)
+                .map(validJwt -> ValidateTokenResponse.builder()
+                        .valid(true)
+                        .userId(Integer.valueOf(jwtService.extractUserId(validJwt)))
+                        .email(jwtService.extractEmail(validJwt))
+                        .roles(jwtService.extractRoles(validJwt))
+                        .rolActivo(jwtService.extractRolActivo(validJwt))
+                        .build())
+                .orElseGet(() -> ValidateTokenResponse.builder().valid(false).build());
     }
 
     private AuthResponse emitirToken(UsuarioAuth usuario, String rolSolicitado, String mensaje) {
-        if (!"Activo".equalsIgnoreCase(usuario.getEstado())) {
-            throw new IllegalArgumentException("El usuario se encuentra inactivo.");
-        }
+        Optional.ofNullable(usuario.getEstado())
+                .filter(estado -> "Activo".equalsIgnoreCase(estado))
+                .orElseThrow(() -> new IllegalArgumentException("El usuario se encuentra inactivo."));
 
         List<String> roles = usuario.getRoles().stream()
                 .map(RolAuth::getNombreRol)
@@ -128,9 +127,9 @@ public class AuthService implements IAuthService {
      * Sin rol solicitado: si la cuenta tiene un solo rol, ese es el activo; si tiene varios, debe elegir.
      */
     private String resolverRolActivo(List<String> roles, String rolSolicitado) {
-        if (roles.isEmpty()) {
-            throw new RolNoAsignadoException(MSG_SIN_ROLES);
-        }
+        Optional.of(roles)
+                .filter(r -> !r.isEmpty())
+                .orElseThrow(() -> new RolNoAsignadoException(MSG_SIN_ROLES));
 
         if (StringUtils.hasText(rolSolicitado)) {
             return roles.stream()
@@ -139,10 +138,10 @@ public class AuthService implements IAuthService {
                     .orElseThrow(() -> new RolNoAsignadoException(MSG_ROL_NO_ASIGNADO));
         }
 
-        if (roles.size() == 1) {
-            return roles.get(0);
-        }
-        throw new SeleccionRolRequeridaException(MSG_SELECCION_ROL, roles);
+        return Optional.of(roles)
+                .filter(r -> r.size() == 1)
+                .map(r -> r.get(0))
+                .orElseThrow(() -> new SeleccionRolRequeridaException(MSG_SELECCION_ROL, roles));
     }
 
     private Optional<String> extraerTokenValido(String token) {

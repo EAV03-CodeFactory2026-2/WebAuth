@@ -15,6 +15,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Optional;
 
 @Service
 public class RefreshTokenService implements IRefreshTokenService {
@@ -58,24 +59,26 @@ public class RefreshTokenService implements IRefreshTokenService {
     @Override
     @Transactional(noRollbackFor = IllegalArgumentException.class)
     public RefreshToken validarToken(String rawToken) {
-        if (!StringUtils.hasText(rawToken)) {
-            throw new IllegalArgumentException(MSG_REFRESH_INVALIDO);
-        }
-
-        RefreshToken token = refreshTokenRepository.findByTokenHash(hashToken(rawToken))
+        RefreshToken token = Optional.ofNullable(rawToken)
+                .filter(StringUtils::hasText)
+                .map(this::hashToken)
+                .flatMap(refreshTokenRepository::findByTokenHash)
                 .orElseThrow(() -> new IllegalArgumentException(MSG_REFRESH_INVALIDO));
 
-        if (token.isRevocado()) {
-            // Reutilización detectada: revocar todas las sesiones activas del usuario por seguridad.
-            refreshTokenRepository.revocarTodosPorUsuario(token.getUsuario().getIdUsuario());
-            throw new IllegalArgumentException(MSG_REFRESH_INVALIDO);
-        }
+        Optional.of(token)
+                .filter(RefreshToken::isRevocado)
+                .ifPresent(reused -> {
+                    refreshTokenRepository.revocarTodosPorUsuario(reused.getUsuario().getIdUsuario());
+                    throw new IllegalArgumentException(MSG_REFRESH_INVALIDO);
+                });
 
-        if (token.getFechaExpiracion().isBefore(Instant.now())) {
-            token.setRevocado(true);
-            refreshTokenRepository.save(token);
-            throw new IllegalArgumentException(MSG_REFRESH_INVALIDO);
-        }
+        Optional.of(token)
+                .filter(rt -> rt.getFechaExpiracion().isBefore(Instant.now()))
+                .ifPresent(expired -> {
+                    expired.setRevocado(true);
+                    refreshTokenRepository.save(expired);
+                    throw new IllegalArgumentException(MSG_REFRESH_INVALIDO);
+                });
 
         return token;
     }
@@ -90,10 +93,10 @@ public class RefreshTokenService implements IRefreshTokenService {
     @Override
     @Transactional
     public void revocarPorToken(String rawToken) {
-        if (!StringUtils.hasText(rawToken)) {
-            return;
-        }
-        refreshTokenRepository.findByTokenHash(hashToken(rawToken))
+        Optional.ofNullable(rawToken)
+                .filter(StringUtils::hasText)
+                .map(this::hashToken)
+                .flatMap(refreshTokenRepository::findByTokenHash)
                 .filter(rt -> !rt.isRevocado())
                 .ifPresent(rt -> {
                     rt.setRevocado(true);
