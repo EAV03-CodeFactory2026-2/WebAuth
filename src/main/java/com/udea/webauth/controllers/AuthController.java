@@ -92,23 +92,37 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("mensaje", "Sesión cerrada correctamente."));
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> invalidRequest(MethodArgumentNotValidException exception) {
+        String message = exception.getBindingResult().getFieldErrors().stream()
+                .map(FieldError::getDefaultMessage)
+                .findFirst()
+                .orElse("Solicitud inválida.");
+        return ResponseEntity.badRequest().body(Map.of("error", message));
+    }
+
+    @ExceptionHandler(SeleccionRolRequeridaException.class)
+    public ResponseEntity<Map<String, Object>> selectionRequired(SeleccionRolRequeridaException exception) {
+        return ResponseEntity.badRequest()
+                .body(Map.of("error", exception.getMessage(), "rolesDisponibles", exception.getRolesDisponibles()));
+    }
+
+    @ExceptionHandler(RolNoAsignadoException.class)
+    public ResponseEntity<Map<String, Object>> roleNotAssigned(RolNoAsignadoException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", exception.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> invalidArgument(IllegalArgumentException exception) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("error", exception.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> error(Exception e) {
-        return switch (e) {
-            case MethodArgumentNotValidException m -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", m.getBindingResult().getFieldErrors().stream()
-                            .map(FieldError::getDefaultMessage)
-                            .findFirst()
-                            .orElse("Solicitud inválida.")));
-            case SeleccionRolRequeridaException s -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", s.getMessage(), "rolesDisponibles", s.getRolesDisponibles()));
-            case RolNoAsignadoException r -> ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", r.getMessage()));
-            case IllegalArgumentException i -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("error", i.getMessage()));
-            default -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Error interno del servidor."));
-        };
+    public ResponseEntity<Map<String, Object>> unexpectedError() {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Error interno del servidor."));
     }
 
     @Operation(
